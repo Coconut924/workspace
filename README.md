@@ -1,6 +1,6 @@
 # iTerm Workspace
 
-Create a native iTerm2 window from a YAML definition:
+Create a native iTerm2 workspace from a YAML definition:
 
 ```sh
 workspace relay
@@ -10,7 +10,14 @@ workspace ./examples/demo.yaml
 
 Each pane has its own name, background color, working directory, optional iTerm
 profile, environment variables, and startup script. No tmux is required.
-Each launch creates a new window. Existing windows and saved profiles are untouched.
+Each launch adds a new tab to the current iTerm window, preserving existing tabs
+and saved profiles. If no window is open, a new one is created. Use `--new-window`
+to always open a separate window. The aliases `-n` and `--n` do the same:
+
+```sh
+workspace relay --new-window
+workspace relay -n
+```
 
 ## Install
 
@@ -179,7 +186,7 @@ Paths expand `~` and environment variables. Directories must exist; validation
 rejects unknown fields, duplicate YAML keys, duplicate pane names, invalid colors,
 invalid env names, cycles/deep layouts, and more than 16 panes. Configuration
 validation is offline; iTerm profile names are checked on connection before
-window creation. Shells start as login shells; your login configuration supplies
+tab or window creation. Shells start as login shells; your login configuration supplies
 PATH and tools such as mise.
 
 For `.iterm/default.yaml`, `root: .` means the project directory. For
@@ -196,8 +203,9 @@ status is not treated as CLI failure: the CLI sets up sessions, it does not moni
 services. `--no-commands` still applies directories and environment variables.
 
 All layout creation completes before startup input is sent. On a split/title
-failure the new window is closed before any scripts run. If sending input fails,
-the partially started window remains available for inspection. The tool does not
+failure only the new tab (or new window with `--new-window`) is closed before any
+scripts run. If sending input fails, the partially started workspace remains
+available for inspection. The tool does not
 reuse sessions, persist processes, or automatically alter every new iTerm window.
 Colors are session-local and disable separate light/dark colors in those sessions.
 Omit `tab_color` (or set it to `null`) to inherit tab colors from the selected profiles.

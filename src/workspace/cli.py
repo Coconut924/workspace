@@ -75,6 +75,10 @@ def main(argv=None):
     parser.add_argument(
         "--no-commands", action="store_true", help="set up panes without startup commands"
     )
+    parser.add_argument(
+        "-n", "--n", "--new-window", dest="new_window", action="store_true",
+        help="create a new window instead of a tab"
+    )
     args = parser.parse_args(argv)
     try:
         if args.target == "list":
@@ -110,7 +114,7 @@ def main(argv=None):
         else:
             from .backend import launch
 
-            launch(config, args.no_commands)
+            launch(config, args.no_commands, new_window=args.new_window)
             print(f"Opened {config.name} ({len(config.panes)} panes)")
         return 0
     except (ConfigError, OSError) as exc:

@@ -10,7 +10,7 @@ from workspace.config import load
 
 async def main(connection):
     config = load(Path(__file__).resolve().parents[1] / "examples/demo.yaml")
-    window = await build(connection, config, iterm2)
+    window = await build(connection, config, iterm2, new_window=True)
     try:
         app = await iterm2.async_get_app(connection)
         tab = app.get_window_by_id(window.window_id).current_tab

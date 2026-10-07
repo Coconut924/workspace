@@ -216,11 +216,12 @@ def fake_api():
     events = []
     window = SimpleNamespace(
         current_tab=SimpleNamespace(
-            current_session=Session(events, "shell"), async_set_title=AsyncMock()
+            current_session=Session(events, "shell"), async_set_title=AsyncMock(),
+            async_close=AsyncMock(),
         ),
         async_close=AsyncMock(),
     )
-    app = SimpleNamespace(async_activate=AsyncMock())
+    app = SimpleNamespace(async_activate=AsyncMock(), current_window=None)
     api = SimpleNamespace(
         LocalWriteOnlyProfile=Custom,
         TitleComponents=SimpleNamespace(PROFILE_NAME=32),
@@ -395,3 +396,90 @@ def test_tab_color_applied_to_every_pane(tmp_path):
         assert profile.values["tab_color"] == (71, 121, 184)
         assert profile.values["use_tab_color"] is True
     assert "tab_color" not in custom_profile(api, cfg.panes[0], cfg.shell).values
+
+
+def existing_window_api():
+    api, window, events = fake_api()
+    original_tab = window.current_tab
+    new_tab = SimpleNamespace(
+        current_session=Session(events, "shell"),
+        async_set_title=AsyncMock(),
+        async_close=AsyncMock(),
+    )
+    window.async_create_tab = AsyncMock(return_value=new_tab)
+    api.async_get_app.return_value.current_window = window
+    return api, window, original_tab, new_tab, events
+
+
+def test_default_adds_tab_to_existing_window(tmp_path):
+    api, window, original_tab, tab, events = existing_window_api()
+    result = asyncio.run(build(None, tree_config(tmp_path), api))
+    assert result is window
+    api.Window.async_create.assert_not_awaited()
+    window.async_create_tab.assert_awaited_once()
+    custom = window.async_create_tab.call_args.kwargs["profile_customizations"]
+    assert custom.values["background_color"] == (24, 34, 48)
+    tab.async_set_title.assert_awaited_once_with("Test")
+    original_tab.async_set_title.assert_not_awaited()
+    original_tab.async_close.assert_not_awaited()
+    window.async_close.assert_not_awaited()
+    assert [event[1] for event in events if event[0] == "send"] == ["shell", "logs", "server"]
+
+
+def test_new_window_flag_ignores_existing_window(tmp_path):
+    api, window, original_tab, tab, _events = existing_window_api()
+    asyncio.run(build(None, tree_config(tmp_path), api, new_window=True))
+    api.Window.async_create.assert_awaited_once()
+    window.async_create_tab.assert_not_awaited()
+    original_tab.async_set_title.assert_awaited_once_with("Test")
+    tab.async_set_title.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure", ["split", "title", "session"])
+def test_existing_window_failure_closes_only_created_tab(tmp_path, failure):
+    api, window, original_tab, tab, events = existing_window_api()
+    if failure == "split":
+        tab.current_session.async_split_pane = AsyncMock(side_effect=RuntimeError("split"))
+    elif failure == "title":
+        tab.async_set_title.side_effect = RuntimeError("title")
+    else:
+        tab.current_session = None
+    with pytest.raises(RuntimeError):
+        asyncio.run(build(None, tree_config(tmp_path), api))
+    tab.async_close.assert_awaited_once_with(force=True)
+    original_tab.async_close.assert_not_awaited()
+    window.async_close.assert_not_awaited()
+    assert not any(event[0] == "send" for event in events)
+
+
+def test_existing_window_send_failure_preserves_tab(tmp_path):
+    api, window, _original_tab, tab, _events = existing_window_api()
+    tab.current_session.async_send_text = AsyncMock(side_effect=RuntimeError("send failed"))
+    with pytest.raises(RuntimeError, match="send failed"):
+        asyncio.run(build(None, tree_config(tmp_path), api))
+    tab.async_close.assert_not_awaited()
+    window.async_close.assert_not_awaited()
+
+
+def test_missing_profile_does_not_add_tab(tmp_path):
+    api, window, _original_tab, _tab, _events = existing_window_api()
+    cfg = config(tmp_path, "profile: Missing\nlayout: {name: shell}")
+    with pytest.raises(ConfigError, match="Unknown iTerm profiles"):
+        asyncio.run(build(None, cfg, api))
+    window.async_create_tab.assert_not_awaited()
+    api.Window.async_create.assert_not_awaited()
+
+
+@pytest.mark.parametrize("flag", [None, "--new-window", "-n", "--n"])
+def test_cli_passes_window_flag(tmp_path, monkeypatch, flag):
+    from unittest.mock import Mock
+
+    cfg = tree_config(tmp_path)
+    launch = Mock()
+    monkeypatch.setattr("workspace.backend.launch", launch)
+    args = [str(cfg.source), "--no-commands"]
+    if flag:
+        args.append(flag)
+    assert main(args) == 0
+    assert launch.call_args.args[1] is True
+    assert launch.call_args.kwargs == {"new_window": flag is not None}

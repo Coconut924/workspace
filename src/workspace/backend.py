@@ -33,7 +33,7 @@ def custom_profile(api, pane, shell, tab_color=None):
     return custom
 
 
-async def build(connection, config, api, no_commands=False):
+async def build(connection, config, api, no_commands=False, new_window=False):
     app = await api.async_get_app(connection)
     profiles = await api.PartialProfile.async_query(connection)
     available = {profile.name for profile in profiles}
@@ -43,13 +43,19 @@ async def build(connection, config, api, no_commands=False):
     if missing:
         raise ConfigError("Unknown iTerm profiles: " + ", ".join(sorted(missing)))
     first = next(leaves(config.layout))
-    window = await api.Window.async_create(
-        connection,
-        profile=first.profile,
-        profile_customizations=custom_profile(api, first, config.shell, config.tab_color),
-    )
-    if window is None or window.current_tab is None or window.current_tab.current_session is None:
-        raise RuntimeError("iTerm did not create a usable window")
+    window = None if new_window else app.current_window
+    owns_window = window is None
+    customizations = custom_profile(api, first, config.shell, config.tab_color)
+    if owns_window:
+        window = await api.Window.async_create(
+            connection, profile=first.profile, profile_customizations=customizations
+        )
+        tab = window.current_tab if window is not None else None
+    else:
+        tab = await window.async_create_tab(
+            profile=first.profile, profile_customizations=customizations
+        )
+    created = window if owns_window else tab
     sessions = []
 
     async def expand(node, session):
@@ -67,11 +73,14 @@ async def build(connection, config, api, no_commands=False):
         await expand(node.second, new_session)
 
     try:
-        await expand(config.layout, window.current_tab.current_session)
-        await window.current_tab.async_set_title(config.name)
+        if tab is None or tab.current_session is None:
+            raise RuntimeError("iTerm did not create a usable workspace tab")
+        await expand(config.layout, tab.current_session)
+        await tab.async_set_title(config.name)
     except Exception:
-        # Only this new window exists here; no startup commands have been sent.
-        await window.async_close(force=True)
+        # Close only the tab/window owned by this launch, before startup input.
+        if created is not None:
+            await created.async_close(force=True)
         raise
     for pane, session in sessions:
         await session.async_send_text(startup_text(pane, config.shell, no_commands))
@@ -80,7 +89,7 @@ async def build(connection, config, api, no_commands=False):
     return window
 
 
-def launch(config, no_commands=False):
+def launch(config, no_commands=False, new_window=False):
     import subprocess
     import sys
 
@@ -96,7 +105,7 @@ def launch(config, no_commands=False):
         # The SDK exits the interpreter when its callback raises. Capture the
         # error here so the CLI can report it without a third-party traceback.
         try:
-            await build(connection, config, iterm2, no_commands)
+            await build(connection, config, iterm2, no_commands, new_window=new_window)
         except Exception as exc:  # noqa: BLE001 -- SDK callback error boundary
             errors.append(exc)
 

@@ -34,10 +34,11 @@ and a local `.venv`; distribution uses standalone macOS executables and Homebrew
 - Preserve strict YAML validation and the discovery rules in
   [docs/discovery.md](docs/discovery.md). Add regression coverage for changes to
   these behaviors.
-- Create a new window on each launch. Keep profile changes session-local.
-  Validate profiles before window creation, complete the layout before sending
-  startup input, close only the new window on layout/title failure, and preserve
-  the window if sending startup input fails.
+- Create a new tab in the current window by default, or a new window with
+  `--new-window` (also when no current window exists). Keep profile changes
+  session-local. Validate profiles before creation, complete the layout before
+  sending startup input, close only the new tab/window on layout/title failure,
+  and preserve it if sending startup input fails.
 - Quote shell paths, environment values, and entire startup scripts with
   `shlex.quote`. `--no-commands` must still apply directories and environment.
   Avoid logging or sharing resolved secrets from dry-run output.
