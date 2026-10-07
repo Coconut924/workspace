@@ -1,0 +1,12 @@
+[tools]
+python = "3.12"
+
+[tasks.setup]
+description = "Create the project virtual environment and install dependencies"
+run = "python -m venv .venv && .venv/bin/python -m pip install -e '.[dev]'"
+
+[tasks.test]
+run = ".venv/bin/python -m pytest"
+
+[tasks.lint]
+run = ".venv/bin/ruff check src tests"

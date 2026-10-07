@@ -1,0 +1,19 @@
+version: 1
+name: Workspace demo
+tab_color: "#4779b8"
+root: .
+layout:
+  direction: horizontal
+  first:
+    direction: vertical
+    first:
+      name: shell
+      color: "#182230"
+    second:
+      name: logs
+      color: "#291c20"
+      command: printf 'Logs pane ready\n'
+  second:
+    name: server
+    color: "#17251d"
+    command: printf 'Server pane ready\n'

@@ -1,0 +1,18 @@
+version: 1
+name: Relay
+root: ~/Projects/backend-learning/relay
+layout:
+  direction: horizontal
+  first:
+    direction: vertical
+    first:
+      name: shell
+      color: "#182230"
+    second:
+      name: database
+      color: "#201b2d"
+      command: psql relay
+  second:
+    name: server
+    color: "#17251d"
+    command: ./gradlew bootRun
