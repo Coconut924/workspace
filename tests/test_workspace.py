@@ -8,11 +8,18 @@ import pytest
 
 from workspace.backend import build, startup_text
 from workspace.cli import main
-from workspace.config import ConfigError, discover, load
+from workspace.config import ConfigError, config_dir, definitions, discover, load
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
 
 
 def config(tmp_path, text="layout: {name: shell}\n"):
-    path = tmp_path / ".workspace.yaml"
+    path = tmp_path / "workspace.yaml"
     path.write_text(text)
     return load(path)
 
@@ -61,7 +68,8 @@ def test_bad_config(tmp_path, text):
 
 
 def test_discovery_respects_git_boundary_and_worktree(tmp_path):
-    parent = tmp_path / ".workspace.yaml"
+    (tmp_path / ".iterm").mkdir()
+    parent = tmp_path / ".iterm" / "default.yaml"
     parent.write_text("layout: {name: parent}")
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -70,7 +78,8 @@ def test_discovery_respects_git_boundary_and_worktree(tmp_path):
     nested.mkdir()
     with pytest.raises(ConfigError):
         discover(None, nested)
-    local = repo / ".workspace.yaml"
+    (repo / ".iterm").mkdir()
+    local = repo / ".iterm" / "default.yaml"
     local.write_text("layout: {name: local}")
     assert discover(None, nested) == local
     assert discover(".", nested) == local
@@ -78,13 +87,75 @@ def test_discovery_respects_git_boundary_and_worktree(tmp_path):
 
 def test_named_and_explicit(tmp_path):
     directory = tmp_path / "settings"
-    (directory / "workspaces").mkdir(parents=True)
-    preset = directory / "workspaces" / "demo.yml"
+    directory.mkdir()
+    preset = directory / "demo.yml"
     preset.write_text("layout: {name: demo}")
     assert discover("demo", tmp_path, directory) == preset
     assert discover(str(preset), tmp_path) == preset
     with pytest.raises(ConfigError):
         discover("unknown", tmp_path, directory)
+
+
+def test_home_fallback_and_local_precedence(tmp_path):
+    home = config_dir()
+    home.mkdir()
+    for name in ("default", "dev", "shared"):
+        (home / f"{name}.yaml").write_text("layout: {name: home}")
+    repo = tmp_path / "repo"
+    local = repo / ".iterm"
+    local.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    nested = repo / "src"
+    nested.mkdir()
+    assert discover(None, nested) == home / "default.yaml"
+    assert discover("shared", nested) == home / "shared.yaml"
+    (local / "dev.yml").write_text("layout: {name: local}")
+    assert discover("dev", nested) == local / "dev.yml"
+    assert definitions(nested)["dev"] == local / "dev.yml"
+    (local / "dev.yaml").write_text("layout: {name: preferred}")
+    assert discover("dev", nested) == local / "dev.yaml"
+    assert definitions(nested)["dev"] == local / "dev.yaml"
+    assert load(home / "default.yaml").root == home.parent
+
+
+def test_nearest_iterm_does_not_select_parent_definition(tmp_path):
+    parent = tmp_path / ".iterm"
+    parent.mkdir()
+    (parent / "dev.yaml").write_text("layout: {name: parent}")
+    project = tmp_path / "project"
+    (project / ".iterm").mkdir(parents=True)
+    with pytest.raises(ConfigError, match="Unknown definition"):
+        discover("dev", project)
+
+
+def test_explicit_files_and_directories(tmp_path):
+    local = tmp_path / ".iterm"
+    local.mkdir()
+    default = local / "default.yml"
+    default.write_text("layout: {name: default}")
+    explicit = tmp_path / "file.yaml"
+    explicit.write_text("layout: {name: explicit}")
+    assert discover("file.yaml", tmp_path) == explicit
+    assert discover("./file.yaml", tmp_path) == explicit
+    assert discover(str(tmp_path), tmp_path) == default
+    assert load(default).root == tmp_path
+    assert load(default).name == tmp_path.name
+    assert load(explicit).root == tmp_path
+    with pytest.raises(ConfigError, match="Configuration does not exist"):
+        discover("missing.yaml", tmp_path)
+    with pytest.raises(ConfigError, match="No default definition"):
+        discover(str(tmp_path / "home"), tmp_path)
+
+
+def test_iterm_relative_root_and_pane_paths(tmp_path):
+    local = tmp_path / ".iterm"
+    local.mkdir()
+    (tmp_path / "app" / "logs").mkdir(parents=True)
+    path = local / "dev.yaml"
+    path.write_text("root: app\nlayout: {name: logs, cwd: logs}")
+    cfg = load(path)
+    assert cfg.root == tmp_path / "app"
+    assert cfg.panes[0].cwd == tmp_path / "app" / "logs"
 
 
 def test_shell_quoting_and_multiline(tmp_path):
@@ -212,19 +283,34 @@ def test_missing_profile_creates_nothing(tmp_path):
 def test_cli_init_validate_dry_run_list(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["init"]) == 0
-    original = (tmp_path / ".workspace.yaml").read_text()
+    path = tmp_path / ".iterm" / "default.yaml"
+    original = path.read_text()
     assert main(["init"]) == 1
-    assert (tmp_path / ".workspace.yaml").read_text() == original
+    assert path.read_text() == original
     assert main(["validate"]) == 0
     capsys.readouterr()
     assert main([".", "--dry-run"]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["layout"]["second"]["name"] == "server"
-    presets = tmp_path / "workspaces"
+    assert output["root"] == str(tmp_path)
+    presets = tmp_path / "settings"
     presets.mkdir()
     (presets / "test.yaml").write_text(original)
-    assert main(["list", "--config-dir", str(tmp_path)]) == 0
+    assert main(["validate", "test", "--config-dir", str(presets)]) == 0
+    capsys.readouterr()
+    assert main(["list", "--config-dir", str(presets)]) == 0
     assert "test\t" in capsys.readouterr().out
+
+
+def test_init_preserves_existing_yml(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    local = tmp_path / ".iterm"
+    local.mkdir()
+    path = local / "default.yml"
+    path.write_text("layout: {name: existing}")
+    assert main(["init"]) == 1
+    assert path.read_text() == "layout: {name: existing}"
+    assert not (local / "default.yaml").exists()
 
 
 def test_no_commands_and_send_failure_preserves_window(tmp_path):

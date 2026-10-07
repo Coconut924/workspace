@@ -56,37 +56,62 @@ workspace examples/demo.yaml --dry-run
 workspace examples/demo.yaml
 ```
 
-## Project workspaces and presets
+## Project and home definitions
 
 ```sh
 cd ~/Projects/my-project
-workspace init              # creates .workspace.yaml without overwriting
-# Edit .workspace.yaml
+workspace init              # creates .iterm/default.yaml without overwriting
+# Edit .iterm/default.yaml
 workspace .                 # launches this project's workspace
 workspace                   # same automatic discovery
 workspace validate          # checks it without opening iTerm
 workspace --no-commands     # colors, directories and env, without startup scripts
 ```
 
-Discovery walks upward from the current directory, checking `.workspace.yaml`, and
-stops at the first Git repository root (including worktrees). It never selects an
-unrelated parent configuration beyond that boundary. A directory path containing
-a slash, or an explicit YAML file, can also be supplied.
+Definitions live in hidden `.iterm/` directories:
 
-Named presets live in `${XDG_CONFIG_HOME:-~/.config}/workspace/workspaces/`:
+```text
+my-project/
+  .iterm/
+    default.yaml
+    dev.yaml
+    debug.yaml
+```
+
+Discovery walks upward from the current directory to the nearest `.iterm/`, stopping
+at the first Git repository root (including worktrees). It looks for the requested
+name there, then falls back to `~/.iterm/`. It does not search additional parent
+`.iterm/` directories. With no name, the requested definition is `default`.
+Both `.yaml` and `.yml` are supported; `.yaml` takes precedence within each directory.
 
 ```sh
-mkdir -p ~/.config/workspace/workspaces
-cp examples/relay.yaml ~/.config/workspace/workspaces/relay.yaml
+workspace                   # discover default.yaml (or default.yml)
+workspace .                 # same automatic discovery
+workspace dev               # discover .iterm/dev.yaml, then ~/.iterm/dev.yaml
+workspace file.yaml         # explicit file in the current directory
+workspace ./path/file.yaml  # explicit file path
+workspace ./project/        # only ./project/.iterm/default.yaml (or default.yml)
+```
+
+Explicit paths do not fall back to home definitions. Add `.iterm/` to your project's
+`.gitignore` to keep local definitions out of Git, or commit them to share layouts.
+
+Home definitions are available across projects:
+
+```sh
+mkdir -p ~/.iterm
+cp examples/relay.yaml ~/.iterm/relay.yaml
 # Change root and commands to match your project
 workspace list
 workspace validate relay
 workspace relay
 ```
 
-Use `--config-dir /path/to/workspace-config` to override the configuration base.
-Preset names use letters, digits, underscores and hyphens. `init`, `list`, and
-`validate` are reserved CLI commands; use an explicit path for presets with those names.
+`workspace list` shows available project and home definitions, with project names
+overriding home names. Use `--config-dir /path/to/definitions` to replace the home
+fallback directory. Names use letters, digits, underscores and hyphens. `init`,
+`list`, and `validate` are reserved CLI commands; use an explicit path for definitions
+with those names. `workspace validate dev` validates a named definition.
 
 ## Configuration
 
@@ -131,8 +156,8 @@ Workspace fields:
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `version` | `1` | Schema version; only 1 is supported |
-| `name` | Config parent directory name | Tab title |
-| `root` | `.` | Base directory, relative to the YAML file |
+| `name` | Base directory name | Tab title |
+| `root` | `.` | Relative to the directory containing `.iterm/`, or the YAML's directory for other files |
 | `tab_color` | Profile tab color | Quoted `#RRGGBB`, applied to all panes so focus changes preserve it |
 | `shell` | `/bin/zsh` | Absolute executable shell path; requires POSIX shell syntax and `-l -c` support |
 | `profile` | iTerm default | Existing iTerm profile inherited by panes |
@@ -156,6 +181,11 @@ invalid env names, cycles/deep layouts, and more than 16 panes. Configuration
 validation is offline; iTerm profile names are checked on connection before
 window creation. Shells start as login shells; your login configuration supplies
 PATH and tools such as mise.
+
+For `.iterm/default.yaml`, `root: .` means the project directory. For
+`~/.iterm/relay.yaml`, it means your home directory; set `root: ~/Projects/relay`
+to launch in that project. Explicit YAML files outside `.iterm/` resolve relative
+paths from the YAML file's directory.
 
 Startup scripts run in a child login shell after `cd` and environment setup. The
 pane remains interactive after they exit. Changes made inside a startup script

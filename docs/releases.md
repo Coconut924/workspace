@@ -10,7 +10,8 @@ brew install Coconut924/tap/workspace
 ```
 
 The installed tool needs neither Python nor this checkout. It still needs iTerm2
-and API authorization. YAML presets remain in the user's configuration directory.
+and API authorization. YAML definitions live in project `.iterm/` directories or
+`~/.iterm/` for definitions shared across projects.
 
 ## Local development and packaging
 

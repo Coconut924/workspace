@@ -71,38 +71,61 @@ def leaves(node):
 
 
 def config_dir():
-    return Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "workspace"
+    return Path.home() / ".iterm"
+
+
+def definition_dirs(cwd: Path | None = None, directory: Path | None = None):
+    """Use the nearest project definitions, then the home definitions."""
+    cwd = (cwd or Path.cwd()).resolve()
+    directory = (directory or config_dir()).expanduser().resolve()
+    for parent in (cwd, *cwd.parents):
+        local = parent / ".iterm"
+        if local.is_dir():
+            if local != directory:
+                yield local
+            break
+        if (parent / ".git").exists():
+            break
+    yield directory
+
+
+def definitions(cwd: Path | None = None, directory: Path | None = None):
+    """List available names with the same precedence as discovery."""
+    result = {}
+    for folder in definition_dirs(cwd, directory):
+        for suffix in (".yaml", ".yml"):
+            for path in sorted(folder.glob(f"*{suffix}")):
+                if path.is_file():
+                    result.setdefault(path.stem, path)
+    return result
 
 
 def discover(target: str | None, cwd: Path | None = None, directory: Path | None = None):
     cwd = (cwd or Path.cwd()).resolve()
-    directory = directory or config_dir()
-    if target is None or target == ".":
-        for parent in (cwd, *cwd.parents):
-            candidate = parent / ".workspace.yaml"
-            if candidate.is_file():
-                return candidate
-            if (parent / ".git").exists():
-                break
-        raise ConfigError(
-            "No .workspace.yaml found before the repository boundary; run workspace init"
-        )
+    target = "default" if target is None or target == "." else target
     path = Path(target).expanduser()
     if path.is_absolute() or "/" in target or path.suffix in {".yaml", ".yml"}:
         path = path if path.is_absolute() else cwd / path
         if path.is_dir():
-            path /= ".workspace.yaml"
+            for suffix in (".yaml", ".yml"):
+                candidate = path / ".iterm" / ("default" + suffix)
+                if candidate.is_file():
+                    return candidate.resolve()
+            raise ConfigError(f"No default definition in {path / '.iterm'}")
         if not path.is_file():
             raise ConfigError(f"Configuration does not exist: {path}")
         return path.resolve()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", target):
-        raise ConfigError("Preset names may contain letters, digits, underscores and hyphens")
-    for suffix in (".yaml", ".yml"):
-        path = directory / "workspaces" / (target + suffix)
-        if path.is_file():
-            return path.resolve()
+        raise ConfigError("Definition names may contain letters, digits, underscores and hyphens")
+    folders = list(definition_dirs(cwd, directory))
+    for folder in folders:
+        for suffix in (".yaml", ".yml"):
+            path = folder / (target + suffix)
+            if path.is_file():
+                return path.resolve()
     raise ConfigError(
-        f"Unknown preset {target!r}; expected {directory / 'workspaces' / (target + '.yaml')}"
+        f"Unknown definition {target!r}; searched {', '.join(str(p) for p in folders)}; "
+        "run workspace init to create .iterm/default.yaml"
     )
 
 
@@ -142,8 +165,9 @@ def load(path: Path):
     )
     if type(data.get("version", 1)) is not int or data.get("version", 1) != 1:
         raise ConfigError("Only configuration version 1 is supported")
-    name = _text(data.get("name", path.parent.name), "name")
-    root = _path(data.get("root", "."), path.parent, "root")
+    base = path.parent.parent if path.parent.name == ".iterm" else path.parent
+    name = _text(data.get("name", base.name), "name")
+    root = _path(data.get("root", "."), base, "root")
     shell = _text(data.get("shell", "/bin/zsh"), "shell")
     if not Path(shell).is_absolute() or not os.access(shell, os.X_OK) or not Path(shell).is_file():
         raise ConfigError("shell must be an absolute path to an executable")

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .config import ConfigError, Pane, config_dir, discover, load
+from .config import ConfigError, Pane, config_dir, definitions, discover, load
 
 TEMPLATE = """version: 1
 name: Development
@@ -61,11 +61,14 @@ def plan(config, no_commands=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Launch declarative native iTerm2 workspaces")
     parser.add_argument(
-        "target", nargs="?", help="preset, YAML path, directory, or . (auto-discover)"
+        "target", nargs="?", help="definition name, YAML path, directory, or . (auto-discover)"
     )
     parser.add_argument("argument", nargs="?", help="target for validate/init")
     parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("--config-dir", type=Path, default=config_dir())
+    parser.add_argument(
+        "--config-dir", type=Path, default=config_dir(),
+        help="fallback definition directory (default: ~/.iterm)",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="print resolved JSON without opening iTerm"
     )
@@ -77,16 +80,18 @@ def main(argv=None):
         if args.target == "list":
             if args.argument:
                 raise ConfigError("list takes no argument")
-            paths = sorted((args.config_dir.expanduser() / "workspaces").glob("*.y*ml"))
-            for path in paths:
-                if path.suffix in {".yaml", ".yml"}:
-                    print(f"{path.stem}\t{path}")
+            for name, path in sorted(definitions(directory=args.config_dir).items()):
+                print(f"{name}\t{path}")
             return 0
         if args.target == "init":
             directory = Path(args.argument or ".").expanduser().resolve()
             if not directory.is_dir():
                 raise ConfigError(f"Directory does not exist: {directory}")
-            path = directory / ".workspace.yaml"
+            folder = directory / ".iterm"
+            folder.mkdir(exist_ok=True)
+            path = folder / "default.yaml"
+            if (folder / "default.yml").exists():
+                raise ConfigError(f"Refusing to overwrite {folder / 'default.yml'}")
             try:
                 with path.open("x") as file:
                     file.write(TEMPLATE)
