@@ -209,6 +209,11 @@ avoid sharing its output if your configuration contains secrets.
 
 ## Development
 
+See the [development setup and verification guide](docs/development.md),
+[repository conventions](docs/conventions.md), and
+[definition discovery rules](docs/discovery.md). Agents should start with
+[AGENTS.md](AGENTS.md). Publishing is covered in [the release guide](docs/releases.md).
+
 ```sh
 mise run test
 mise run lint
