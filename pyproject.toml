@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = ["PyYAML>=6,<7", "iterm2>=2.7,<3"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
+dev = ["pytest>=8,<10", "ruff>=0.9,<1", "PyInstaller==6.22.0"]
 
 [project.scripts]
 workspace = "workspace.cli:main"

@@ -1,0 +1,70 @@
+name: Release standalone executables
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run setup
+      - name: Verify release version and architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          .venv/bin/python - <<'PY'
+          import os, platform, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          assert platform.machine() == os.environ['EXPECTED_ARCH']
+          if os.environ['GITHUB_REF_TYPE'] == 'tag':
+              assert os.environ['GITHUB_REF_NAME'] == 'v' + version
+          PY
+      - run: mise run test
+      - run: mise run lint
+      - run: mise run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workspace-macos-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums and publish release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum *.tar.gz > SHA256SUMS
+          if gh release view "$RELEASE_TAG"; then
+            gh release upload "$RELEASE_TAG" *.tar.gz SHA256SUMS
+          else
+            gh release create "$RELEASE_TAG" *.tar.gz SHA256SUMS --verify-tag --generate-notes
+          fi

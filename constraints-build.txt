@@ -1,0 +1,16 @@
+# Versions verified for the standalone release. Refresh deliberately when upgrading.
+altgraph==0.17.5
+iniconfig==2.3.1
+iterm2==2.25
+macholib==1.16.4
+packaging==26.3
+pluggy==1.6.0
+protobuf==7.36.2
+Pygments==2.21.0
+pyinstaller==6.22.0
+pyinstaller-hooks-contrib==2026.8
+pytest==9.1.1
+PyYAML==6.0.3
+ruff==0.16.10
+setuptools==84.0.0
+websockets==17.2

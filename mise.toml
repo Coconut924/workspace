@@ -1,12 +1,24 @@
 [tools]
-python = "3.12"
+python = "3.12.15"
 
 [tasks.setup]
 description = "Create the project virtual environment and install dependencies"
-run = "python -m venv .venv && .venv/bin/python -m pip install -e '.[dev]'"
+run = "python -m venv .venv && .venv/bin/python -m pip install -c constraints-build.txt -e '.[dev]'"
 
 [tasks.test]
 run = ".venv/bin/python -m pytest"
 
 [tasks.lint]
-run = ".venv/bin/ruff check src tests"
+run = ".venv/bin/ruff check src tests scripts"
+
+[tasks.build]
+description = "Build and smoke-test a standalone macOS executable"
+run = ".venv/bin/python scripts/build.py"
+
+[tasks.package]
+description = "Build a versioned archive with a SHA-256 checksum"
+run = ".venv/bin/python scripts/package.py"
+
+[tasks.publish-tap]
+description = "Update Coconut924/homebrew-tap from the published GitHub release"
+run = ".venv/bin/python scripts/publish_tap.py"

@@ -14,6 +14,20 @@ Each launch creates a new window. Existing windows and saved profiles are untouc
 
 ## Install
 
+For the standalone release (no Python or repository checkout required):
+
+```sh
+brew tap Coconut924/tap
+brew install Coconut924/tap/workspace
+```
+
+Enable iTerm2's Python API as described below. To build an executable yourself,
+run `mise run build`; to create a release archive, run `mise run package`.
+See [Packaging and Homebrew releases](docs/releases.md) for the full build,
+versioning, GitHub Release, and tap update process.
+
+### Development installation
+
 Requires macOS, iTerm2, and Python 3.11+. This project uses mise for Python.
 From this repository:
 
